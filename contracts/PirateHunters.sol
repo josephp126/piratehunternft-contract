@@ -6,12 +6,7 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./IBooty.sol";
-
-
-interface IBootyChest {
-    function randomPirateOwner() external returns (address);
-    function addTokensToStake(address account, uint16[] calldata tokenIds) external;
-}
+import "./IBootyChest.sol";
 
 contract PirateHunters is ERC721, Ownable {
     uint public MAX_TOKENS = 10000;
@@ -135,7 +130,8 @@ contract PirateHunters is ERC721, Ownable {
     function updateRandomIndex() internal {
         _randomIndex += 1;
         _randomCalls += 1;
-        if (_randomIndex > 6) _randomIndex = 0;
+        if (_randomIndex > 6)
+            _randomIndex = 0;
     }
 
     function getSomeRandomNumber(uint _seed, uint _limit) internal view returns (uint16) {
