@@ -3,14 +3,13 @@ pragma solidity ^0.8.0;
 // SPDX-License-Identifier: MIT
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "./IBooty.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-contract Booty is  ERC20, Ownable {
+contract Booty is ERC20, Ownable {
     using SafeMath for uint256;
 
-    uint256 private immutable _cap = 1e27;
+    uint256 private immutable _cap = 10000000000 ether;//1e28;
 
     // Allowlist of addresses to mint or burn
     mapping(address => bool) public controllers;

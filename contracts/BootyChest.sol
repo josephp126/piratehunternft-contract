@@ -4,6 +4,7 @@ pragma solidity ^0.8.9;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "./IBooty.sol";
 
 interface IPirateHunters {
     function ownerOf(uint id) external view returns (address);
@@ -12,13 +13,13 @@ interface IPirateHunters {
     function safeTransferFrom(address from, address to, uint tokenId, bytes memory _data) external;
 }
 
-interface IBooty {
-    function mint(address account, uint amount) external;
-}
 
+/**
+* Staking, unstaking, claims
+*/
 contract BootyChest is Ownable, IERC721Receiver {
-    bool private _paused = false;
 
+    bool private _paused = false;
     uint16 private _randomIndex = 0;
     uint private _randomCalls = 0;
     mapping(uint => address) private _randomSource;
@@ -26,21 +27,26 @@ contract BootyChest is Ownable, IERC721Receiver {
     struct Stake {
         uint16 tokenId;
         uint80 value;
+        uint256 xtraReward; // for managing tax among other booty acquired
         address owner;
+        int8 rank; // rank 1, 2, 3 is A, B, C respectively
     }
 
     event TokenStaked(address owner, uint16 tokenId, uint value);
     event BountyHunterClaimed(uint16 tokenId, uint earned, bool unstaked);
     event PirateClaimed(uint16 tokenId, uint earned, bool unstaked);
+    event BootyBurned(uint16 tokenId, uint percentageBurned, uint amountBurned,uint earned );
 
     IPirateHunters public pirateHunters;
     IBooty public booty;
 
     mapping(uint256 => uint256) public bountyHunterIndices;
     mapping(address => Stake[]) public bountyHunterStake;
+    //mapping(address => uint256) public bountyHunterXtraReward;
 
     mapping(uint256 => uint256) public pirateIndices;
     mapping(address => Stake[]) public pirateStake;
+    //mapping(address => uint256) public pirateXtraReward;
     address[] public pirateHolders;
 
     // Total staked tokens
@@ -51,10 +57,24 @@ contract BootyChest is Ownable, IERC721Receiver {
     // pirate earn 10000 $BOOTY per day
     uint public constant DAILY_PIRATE_BOOTY_RATE = 10000 ether;
     // BountyHunter earn 30000 $BOOTY per day
-    uint public constant DAILY_HUNTER_BOOTY_RATE = 30000 ether;
-    uint public constant MINIMUM_TIME_TO_EXIT = 2 days;
-    uint public constant TAX_PERCENTAGE = 20;
-    uint public constant MAXIMUM_GLOBAL_BOOTY = 1000000000 ether;
+    uint public constant DAILY_HUNTER_BOOTY_RATE = 3000 ether;
+    uint public constant MINIMUM_PIRATE_BOOTY_TO_CLAIM = 20000 ether;
+    uint public constant MINIMUM_BOUNTY_HUNTER_BOOTY_TO_CLAIM = 0 ether;
+
+    uint public constant TAX_THRESHOLD= 50000 ether;
+    uint public constant TAX_PERCENTAGE_BOUNTY_HUNTER = 20;
+    uint public constant TAX_PERCENTAGE_PIRATE = 40;
+//    uint public constant TAX_PERCENTAGE = 40;
+
+    uint public constant PERCENTAGE_TO_BE_ROBBED_FROM_BOUNTY_HUNTER = 50;
+    // percentage of  amount to burn once BH is robbed
+    uint public constant PERCENTAGE_OF_ROBBED_BURN_BOUNTY_HUNTER = 50;
+
+    uint public constant PERCENTAGE_TO_BE_ROBBED_FROM_PIRATE = 100;
+    // percentage of  amount to burn once Pirate is robbed
+    uint public constant PERCENTAGE_OF_ROBBED_BURN_PIRATE = 40;
+
+    uint public constant MAXIMUM_GLOBAL_BOOTY = 10000000000 ether;
 
     uint public totalBootyEarned;
 
@@ -63,6 +83,10 @@ contract BootyChest is Ownable, IERC721Receiver {
 
     // emergency rescue to allow unstaking without any checks but without $BOOTY
     bool public rescueEnabled = false;
+
+    int8 public constant RANK_A = 1;
+    int8 public constant RANK_B = 2;
+    int8 public constant RANK_C = 3;
 
     constructor() {
         // Fill random source addresses
@@ -108,7 +132,6 @@ contract BootyChest is Ownable, IERC721Receiver {
     function addTokensToStake(address account, uint16[] calldata tokenIds) external {
         require(account == msg.sender || msg.sender == address(pirateHunters), "You do not have a permission to stake tokens");
 
-
         // TODO: Reanalyse
         for (uint i = 0; i < tokenIds.length; i++) {
             if (msg.sender != address(pirateHunters)) {
@@ -134,8 +157,11 @@ contract BootyChest is Ownable, IERC721Receiver {
         bountyHunterStake[account].push(Stake({
             owner: account,
             tokenId: uint16(tokenId),
-            value: uint80(block.timestamp)
+            value: uint80(block.timestamp),
+            xtraReward: 0,
+            rank: RANK_C
         }));
+
         emit TokenStaked(account, tokenId, block.timestamp);
     }
 
@@ -152,8 +178,10 @@ contract BootyChest is Ownable, IERC721Receiver {
         pirateStake[account].push(Stake({
             owner: account,
             tokenId: uint16(tokenId),
-            value: uint80(pirateReward)  // Correct pirate reward should also be base on block time
-            }));
+            value: uint80(block.timestamp),//uint80(pirateReward),  // Correct pirate reward should also be base on block time
+            xtraReward: 0,
+            rank: RANK_C
+        }));
 
         emit TokenStaked(account, tokenId, pirateReward);
     }
@@ -172,56 +200,121 @@ contract BootyChest is Ownable, IERC721Receiver {
         booty.mint(msg.sender, owed);
     }
 
-    function _claimFromHunter(uint16 tokenId, bool unstake) internal returns (uint owed) {
-        Stake memory stake = bountyHunterStake[msg.sender][bountyHunterIndices[tokenId]];
-        require(stake.owner == msg.sender, "This NTF does not belong to address");
-        require(!(unstake && block.timestamp - stake.value < MINIMUM_TIME_TO_EXIT), "Need to wait 2 days since last claim");
+    function possibleClaimForToken(uint16 tokenId) public view returns (uint owed) {
+        owed = 0;
+        if (!pirateHunters.isPirate(tokenId)) {
+            Stake memory stake = pirateStake[msg.sender][pirateIndices[tokenId]];
+            owed += _possibleClaimForPirate(stake);
+        } else {
+            Stake memory stake = bountyHunterStake[msg.sender][bountyHunterIndices[tokenId]];
+            owed += _possibleClaimForHunter(stake);
+        }
+    }
+
+    function _possibleClaimForHunter(Stake memory stake) private view returns (uint owed) {
+        require(stake.owner == msg.sender, "This NFT does not belong to address");
 
         if (totalBootyEarned < MAXIMUM_GLOBAL_BOOTY) {
-            owed = ((block.timestamp - stake.value) * DAILY_PIRATE_BOOTY_RATE) / 1 days;
+            // TODO: Shop function to check if there are additional item that can increase earning rate
+            owed = ((block.timestamp - stake.value) * DAILY_HUNTER_BOOTY_RATE) / 1 days;
         } else if (stake.value > lastClaimTimestamp) {
             owed = 0; // $BOOTY production stopped already
         } else {
-            owed = ((lastClaimTimestamp - stake.value) * DAILY_PIRATE_BOOTY_RATE) / 1 days; // stop earning additional $BOOTY if it's all been earned
+            owed = ((lastClaimTimestamp - stake.value) * DAILY_HUNTER_BOOTY_RATE) / 1 days; // stop earning additional $BOOTY if it's all been earned
         }
-        if (unstake) {
-            if (getSomeRandomNumber(tokenId, 100) <= 50) {
-                _payTax(owed);
-                owed = 0;
-            }
-            updateRandomIndex();
-            totalBountyHunterStaked -= 1;
+        // add all extra acquired
+        owed+=stake.xtraReward;
+    }
 
+    function mintAndBurn(uint amount) internal {
+        booty.mint(address(this), amount);
+        booty.burn(address(this), amount);
+    }
+
+    function _claimFromHunter(uint16 tokenId, bool unstake) internal returns (uint owed) {
+        Stake memory stake = bountyHunterStake[msg.sender][bountyHunterIndices[tokenId]];
+
+        owed = _possibleClaimForHunter(stake);
+        require(owed>MINIMUM_BOUNTY_HUNTER_BOOTY_TO_CLAIM, "$BOOTY less than minimum");
+        //Burning and robbery
+
+        if(owed <= TAX_THRESHOLD){
+            uint tax = (TAX_PERCENTAGE_BOUNTY_HUNTER * owed) /100;
+            owed -= tax;
+            mintAndBurn(tax);
+            emit BootyBurned(tokenId, TAX_PERCENTAGE_BOUNTY_HUNTER, tax, owed );
+        }else{
+            uint robbed = (PERCENTAGE_TO_BE_ROBBED_FROM_BOUNTY_HUNTER * owed) /100;
+            owed -= robbed;
+            _payTaxBountyHunter(robbed);
+        }
+
+        if (unstake) {
+            totalBountyHunterStaked -= 1;
             Stake memory lastStake = bountyHunterStake[msg.sender][bountyHunterStake[msg.sender].length - 1];
             bountyHunterStake[msg.sender][bountyHunterIndices[tokenId]] = lastStake;
             bountyHunterIndices[lastStake.tokenId] = bountyHunterIndices[tokenId];
             bountyHunterStake[msg.sender].pop();
             delete bountyHunterIndices[tokenId];
-
             pirateHunters.safeTransferFrom(address(this), msg.sender, tokenId, "");
         } else {
-            _payTax((owed * TAX_PERCENTAGE) / 100); // Pay some $BOOTY to pirates!
-            owed = (owed * (100 - TAX_PERCENTAGE)) / 100;
 
             uint80 timestamp = uint80(block.timestamp);
-
             bountyHunterStake[msg.sender][bountyHunterIndices[tokenId]] = Stake({
                 owner: msg.sender,
                 tokenId: uint16(tokenId),
-                value: timestamp
+                value: timestamp,
+                xtraReward: 0,
+                rank: stake.rank
             }); // reset stake
         }
 
         emit BountyHunterClaimed(tokenId, owed, unstake);
     }
 
+    function _possibleClaimForPirate(Stake memory stake) private view returns (uint owed) {
+        require(pirateHunters.ownerOf(stake.tokenId) == address(this), "This NFT does not belong to address");
+
+        require(stake.owner == msg.sender, "This NFT does not belong to address");
+        //owed = (pirateReward - stake.value);
+
+        if (totalBootyEarned < MAXIMUM_GLOBAL_BOOTY) {
+            // TODO: Shop function to check if there are additional item that can increase earning rate
+            owed = ((block.timestamp - stake.value) * DAILY_PIRATE_BOOTY_RATE) / 1 days;
+        } else if (stake.value > lastClaimTimestamp) {
+            owed = 0; // $BOOTY production stopped already
+        } else {
+            owed = ((lastClaimTimestamp - stake.value) * DAILY_PIRATE_BOOTY_RATE) / 1 days; // stop earning additional $BOOTY if it's all been earned
+        }
+        // add all extra acquired
+        owed+=stake.xtraReward;
+    }
+
     function _claimFromPirate(uint16 tokenId, bool unstake) internal returns (uint owed) {
-        require(pirateHunters.ownerOf(tokenId) == address(this), "This NTF does not belong to address");
+        require(pirateHunters.ownerOf(tokenId) == address(this), "This NFT does not belong to address");
 
         Stake memory stake = pirateStake[msg.sender][pirateIndices[tokenId]];
 
-        require(stake.owner == msg.sender, "This NTF does not belong to address");
-        owed = (pirateReward - stake.value);
+        require(stake.owner == msg.sender, "This NFT does not belong to address");
+
+        owed = _possibleClaimForPirate(stake);
+
+        require(owed >= MINIMUM_PIRATE_BOOTY_TO_CLAIM, "$BOOTY not upto minimum claimable ");
+
+        if(owed <= TAX_THRESHOLD){
+            uint tax = (TAX_PERCENTAGE_PIRATE * owed) /100;
+            owed -= tax;
+            _payTaxPirate(tax);
+        }else{
+            if (getSomeRandomNumber(tokenId, 100) <= 50) {
+                uint burn = (PERCENTAGE_OF_ROBBED_BURN_PIRATE * owed) /100;
+                _payTaxPirate(owed-burn); // pay 60% of what is robbed
+                mintAndBurn(burn); // burn 40%
+                emit BootyBurned(tokenId, PERCENTAGE_OF_ROBBED_BURN_PIRATE, owed, 0 );
+                owed = 0;
+            }
+            updateRandomIndex();
+        }
 
         if (unstake) {
             totalPirateStaked -= 1; // Remove Alpha from total staked
@@ -236,9 +329,11 @@ contract BootyChest is Ownable, IERC721Receiver {
             pirateHunters.safeTransferFrom(address(this), msg.sender, tokenId, "");
         } else {
             pirateStake[msg.sender][pirateIndices[tokenId]] = Stake({
-                owner: msg.sender,
-                tokenId: uint16(tokenId),
-                value: uint80(pirateReward)
+            owner: msg.sender,
+            tokenId: uint16(tokenId),
+            value: uint80(block.timestamp),// uint80(pirateReward),
+            xtraReward: 0,
+            rank: stake.rank
             }); // reset stake
         }
         emit PirateClaimed(tokenId, owed, unstake);
@@ -308,6 +403,27 @@ contract BootyChest is Ownable, IERC721Receiver {
     }
 
     function _payTax(uint _amount) internal {
+        if (totalPirateStaked == 0) {
+            unaccountedRewards += _amount;
+            return;
+        }
+
+        pirateReward += (_amount + unaccountedRewards) / totalPirateStaked;
+        unaccountedRewards = 0;
+    }
+
+
+    function _payTaxPirate(uint _amount) internal {
+        if (totalPirateStaked == 0) {
+            unaccountedRewards += _amount;
+            return;
+        }
+
+        pirateReward += (_amount + unaccountedRewards) / totalPirateStaked;
+        unaccountedRewards = 0;
+    }
+
+    function _payTaxBountyHunter(uint _amount) internal {
         if (totalPirateStaked == 0) {
             unaccountedRewards += _amount;
             return;
