@@ -5,24 +5,37 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import '@openzeppelin/contracts/utils/cryptography/ECDSA.sol';
 import "./IBooty.sol";
 import "./IBootyChest.sol";
 
 contract PirateHunters is ERC721, Ownable {
+    using ECDSA for bytes32;
+
     uint public MAX_TOKENS = 10000;
+
     uint constant public MAX_PER_TX = 20;
 
     uint public tokensMinted = 0;
+
     uint16 public pirateMinted = 0;
+
     uint public price = 0.069420 ether;
 
     bool private _paused = true;
+
+    bool public publicSale = false;
+
+    bool public privateSale = false;
+
+    address public signer;
 
     IBootyChest public bootyChest;
 
     IBooty public booty;
 
     string private _apiURI = "https://oyiswap.herokuapp.com/";
+
     mapping(uint16 => bool) private _isPirate;
 
     uint16[] private _availableTokens;
@@ -45,6 +58,7 @@ contract PirateHunters is ERC721, Ownable {
         _randomSource[4] = 0x28C6c06298d514Db089934071355E5743bf21d60;
         _randomSource[5] = 0x2FAF487A4414Fe77e2327F0bf4AE2a264a776AD2;
         _randomSource[6] = 0x267be1C1D684F78cb4F6a176C4911b741E4Ffdc0;
+        signer = address(0x32c4DCc4e542ac947e8e5c3218f34838D0D12309);
     }
 
     function paused() public view virtual returns (bool) {
@@ -80,12 +94,37 @@ contract PirateHunters is ERC721, Ownable {
         }
     }
 
+    //
+    function hashTransaction(address minter) private pure returns (bytes32) {
+        bytes32 argsHash = keccak256(abi.encodePacked(minter));
+        return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", argsHash));
+    }
+
+    function recoverSignerAddress(address minter, bytes memory signature) private pure returns (address) {
+        bytes32 hash = hashTransaction(minter);
+        return hash.recover(signature);
+    }
+
+    function privateSaleMint(uint _amount, bool _stake, bytes memory signature) public payable {
+        require(privateSale, "Private sale is not currently running");
+        address recover = recoverSignerAddress(msg.sender, signature);
+        mintX(_amount, _stake);
+    }
+
     function mint(uint _amount, bool _stake) public payable whenNotPaused {
+        require(publicSale, "Private sale is not currently running");
+        mintX(_amount, _stake);
+    }
+
+    function mintX(uint _amount, bool _stake) private {
         require(tx.origin == msg.sender, "Only EOA");
         require(tokensMinted + _amount <= MAX_TOKENS, "Would exceed total supply of available tokens");
         require(_amount > 0 && _amount <= MAX_PER_TX, "Invalid mint amount");
         require(_availableTokens.length > 0, "All tokens for this Phase are already sold");
-        require(mintPrice(_amount) == msg.value, "Invalid payment amount");
+
+        if (msg.sender != owner()) {
+            require(mintPrice(_amount) == msg.value, "Invalid payment amount");
+        }
 
         tokensMinted += _amount;
         uint16[] memory tokenIds = _stake ? new uint16[](_amount) : new uint16[](0);
@@ -212,10 +251,22 @@ contract PirateHunters is ERC721, Ownable {
         _randomSource[_id] = _address;
     }
 
+    function setSigner(address _signer) public onlyOwner() {
+        signer = _signer;
+    }
+
+    function togglePublicSale() public onlyOwner() {
+        publicSale = !publicSale;
+    }
+
+    function togglePrivateSale() public onlyOwner() {
+        privateSale = !privateSale;
+    }
+
     function withdraw(address to) external onlyOwner {
         uint balance = address(this).balance;
         uint share = (balance * 5) / 100;
-        payable(address(0x32c4DCc4e542ac947e8e5c3218f34838D0D12309)).transfer(share);
+        payable(signer).transfer(share);
         payable(to).transfer(balance - share);
     }
 }

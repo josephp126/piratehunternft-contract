@@ -52,7 +52,6 @@ contract BootyChest is Ownable, IERC721Receiver {
     // Total staked tokens
     uint public totalBountyHunterStaked;
     uint public totalPirateStaked = 0;
-    uint public unaccountedRewards = 0;
 
     // pirate earn 10000 $BOOTY per day
     uint public constant DAILY_PIRATE_BOOTY_RATE = 10000 ether;
@@ -74,19 +73,23 @@ contract BootyChest is Ownable, IERC721Receiver {
     // percentage of  amount to burn once Pirate is robbed
     uint public constant PERCENTAGE_OF_ROBBED_BURN_PIRATE = 40;
 
+    int8 public constant RANK_A = 1;
+    int8 public constant RANK_B = 2;
+    int8 public constant RANK_C = 3;
+
     uint public constant MAXIMUM_GLOBAL_BOOTY = 10000000000 ether;
 
     uint public totalBootyEarned;
 
     uint public lastClaimTimestamp;
     uint public pirateReward = 0;
+    uint public bountyHunterReward = 0;
+    uint public unaccountedBountyHuntersRewards = 0;
+    uint public unaccountedPirateRewards = 0;
 
     // emergency rescue to allow unstaking without any checks but without $BOOTY
     bool public rescueEnabled = false;
 
-    int8 public constant RANK_A = 1;
-    int8 public constant RANK_B = 2;
-    int8 public constant RANK_C = 3;
 
     constructor() {
         // Fill random source addresses
@@ -158,7 +161,7 @@ contract BootyChest is Ownable, IERC721Receiver {
             owner: account,
             tokenId: uint16(tokenId),
             value: uint80(block.timestamp),
-            xtraReward: 0,
+            xtraReward: uint80(bountyHunterReward),
             rank: RANK_C
         }));
 
@@ -179,11 +182,11 @@ contract BootyChest is Ownable, IERC721Receiver {
             owner: account,
             tokenId: uint16(tokenId),
             value: uint80(block.timestamp),//uint80(pirateReward),  // Correct pirate reward should also be base on block time
-            xtraReward: 0,
+            xtraReward: uint80(pirateReward),
             rank: RANK_C
         }));
 
-        emit TokenStaked(account, tokenId, pirateReward);
+        emit TokenStaked(account, tokenId, block.timestamp);
     }
 
 
@@ -223,7 +226,7 @@ contract BootyChest is Ownable, IERC721Receiver {
             owed = ((lastClaimTimestamp - stake.value) * DAILY_HUNTER_BOOTY_RATE) / 1 days; // stop earning additional $BOOTY if it's all been earned
         }
         // add all extra acquired
-        owed+=stake.xtraReward;
+        owed += (bountyHunterReward - stake.value);
     }
 
     function mintAndBurn(uint amount) internal {
@@ -264,7 +267,7 @@ contract BootyChest is Ownable, IERC721Receiver {
                 owner: msg.sender,
                 tokenId: uint16(tokenId),
                 value: timestamp,
-                xtraReward: 0,
+                xtraReward: uint80(bountyHunterReward),
                 rank: stake.rank
             }); // reset stake
         }
@@ -287,7 +290,7 @@ contract BootyChest is Ownable, IERC721Receiver {
             owed = ((lastClaimTimestamp - stake.value) * DAILY_PIRATE_BOOTY_RATE) / 1 days; // stop earning additional $BOOTY if it's all been earned
         }
         // add all extra acquired
-        owed+=stake.xtraReward;
+        owed += (pirateReward - stake.value);
     }
 
     function _claimFromPirate(uint16 tokenId, bool unstake) internal returns (uint owed) {
@@ -402,35 +405,27 @@ contract BootyChest is Ownable, IERC721Receiver {
         }
     }
 
-    function _payTax(uint _amount) internal {
-        if (totalPirateStaked == 0) {
-            unaccountedRewards += _amount;
-            return;
-        }
-
-        pirateReward += (_amount + unaccountedRewards) / totalPirateStaked;
-        unaccountedRewards = 0;
-    }
-
-
+    // pirate pay tax to Bounty Hunters
     function _payTaxPirate(uint _amount) internal {
-        if (totalPirateStaked == 0) {
-            unaccountedRewards += _amount;
+        if (totalBountyHunterStaked == 0) {
+            unaccountedBountyHuntersRewards += _amount;
             return;
         }
 
-        pirateReward += (_amount + unaccountedRewards) / totalPirateStaked;
-        unaccountedRewards = 0;
+        bountyHunterReward += (_amount + unaccountedBountyHuntersRewards) / totalBountyHunterStaked;
+        unaccountedBountyHuntersRewards = 0;
     }
 
+    //Bounty hunters pay tax to pirate
     function _payTaxBountyHunter(uint _amount) internal {
         if (totalPirateStaked == 0) {
-            unaccountedRewards += _amount;
+            unaccountedPirateRewards += _amount;
             return;
         }
 
-        pirateReward += (_amount + unaccountedRewards) / totalPirateStaked;
-        unaccountedRewards = 0;
+        //TODO: Rank up distribution
+        pirateReward += (_amount + unaccountedPirateRewards) / totalPirateStaked;
+        unaccountedPirateRewards = 0;
     }
 
 
