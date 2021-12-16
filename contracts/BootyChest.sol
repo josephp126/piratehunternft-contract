@@ -79,10 +79,15 @@ contract BootyChest is Ownable, IERC721Receiver {
     uint public totalBootyEarned;
 
     uint public lastClaimTimestamp;
-    uint public pirateReward = 0;
+    uint public pirateReward_A = 0;
+    uint public pirateReward_B = 0;
+    uint public pirateReward_C = 0;
     uint public bountyHunterReward = 0;
     uint public unaccountedBountyHuntersRewards = 0;
     uint public unaccountedPirateRewards = 0;
+    uint public totalPirateRank_A = 0;
+    uint public totalPirateRank_B = 0;
+    uint public totalPirateRank_C = 0;
 
     // emergency rescue to allow unstaking without any checks but without $BOOTY
     bool public rescueEnabled = false;
@@ -168,6 +173,7 @@ contract BootyChest is Ownable, IERC721Receiver {
 
     function _stakePirates(address account, uint16 tokenId) internal {
         totalPirateStaked += 1;
+        totalPirateRank_C += 1;
 
         // If account already has some pirates no need to push it to the tracker
         if (pirateStake[account].length == 0) {
@@ -179,7 +185,7 @@ contract BootyChest is Ownable, IERC721Receiver {
             owner: account,
             tokenId: uint16(tokenId),
             value: uint80(block.timestamp),//uint80(pirateReward),  // Correct pirate reward should also be base on block time
-            xtraReward: uint80(pirateReward),
+            xtraReward: uint80(pirateReward_C),
             rank: RANK_C
         }));
 
@@ -291,20 +297,28 @@ contract BootyChest is Ownable, IERC721Receiver {
        //owed = (pirateReward - stake.value);
 
 
-       uint x = 0;
+       //uint x = 0;
        if (totalBootyEarned < MAXIMUM_GLOBAL_BOOTY) {
            // TODO: Shop function to check if there are additional item that can increase earning rate
-           x = ((block.timestamp - stake.value) * DAILY_PIRATE_BOOTY_RATE) / 1 days;
+           owed = ((block.timestamp - stake.value) * DAILY_PIRATE_BOOTY_RATE) / 1 days;
        } else if (stake.value > lastClaimTimestamp) {
-           x = 0; // $BOOTY production stopped already
+           owed = 0; // $BOOTY production stopped already
        } else {
-           x = ((lastClaimTimestamp - stake.value) * DAILY_PIRATE_BOOTY_RATE) / 1 days; // stop earning additional $BOOTY if it's all been earned
+           owed = ((lastClaimTimestamp - stake.value) * DAILY_PIRATE_BOOTY_RATE) / 1 days; // stop earning additional $BOOTY if it's all been earned
        }
 
        // owed = 50000 ether;
 //        // add all extra acquired
-        x += (pirateReward - stake.xtraReward);
-        owed = x;
+        uint pirateReward = 0;
+        if(stake.rank == RANK_A){
+            pirateReward = pirateReward_A;
+        }else if(stake.rank == RANK_B){
+            pirateReward = pirateReward_B;
+        }else{
+            pirateReward = pirateReward_C;
+        }
+        owed += (pirateReward - stake.xtraReward);
+       // owed = x;
     }
 
     function _claimFromPirate(uint16 tokenId, bool unstake) internal returns (uint owed) {
@@ -335,6 +349,13 @@ contract BootyChest is Ownable, IERC721Receiver {
 
         if (unstake) {
             totalPirateStaked -= 1; // Remove Alpha from total staked
+            if(stake.rank == RANK_A){
+                totalPirateRank_A -= 1;
+            }else if (stake.rank == RANK_B){
+                totalPirateRank_B -= 1;
+            }else{
+                totalPirateRank_C -= 1;
+            }
 
             Stake memory lastStake = pirateStake[msg.sender][pirateStake[msg.sender].length - 1];
             pirateStake[msg.sender][pirateIndices[tokenId]] = lastStake;
@@ -345,11 +366,17 @@ contract BootyChest is Ownable, IERC721Receiver {
 
             pirateHunters.safeTransferFrom(address(this), msg.sender, tokenId, "");
         } else {
+            uint currentPirateReward = uint80(pirateReward_C);
+            if(stake.rank == RANK_A){
+                currentPirateReward = uint80(pirateReward_A);
+            }else if (stake.rank == RANK_B){
+                currentPirateReward = uint80(pirateReward_B);
+            }
             pirateStake[msg.sender][pirateIndices[tokenId]] = Stake({
             owner: msg.sender,
             tokenId: uint16(tokenId),
             value: uint80(block.timestamp),// ,
-            xtraReward: uint80(pirateReward), // take record of total reward as at time of staking
+            xtraReward: currentPirateReward,
             rank: stake.rank
             }); // reset stake
         }
@@ -437,8 +464,14 @@ contract BootyChest is Ownable, IERC721Receiver {
             return;
         }
 
-        //TODO: Rank up distribution
-        pirateReward += (_amount + unaccountedPirateRewards) / totalPirateStaked;
+//        pirateReward += (_amount + unaccountedPirateRewards) / totalPirateStaked;
+        uint pirateReward = (_amount + unaccountedPirateRewards);
+        // using 1.5x + 1.25x + x = pirateReward (total pirate reward)
+        uint x = (pirateReward*375)/100;  // 375/100 = 3.75
+        pirateReward_C += x/totalPirateRank_C;
+        pirateReward_B += ((125 * x)/100)/totalPirateRank_B;
+        pirateReward_A += ((15 * x)/10)/totalPirateRank_A;
+
         unaccountedPirateRewards = 0;
     }
 
