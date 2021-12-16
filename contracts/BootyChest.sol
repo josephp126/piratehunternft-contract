@@ -13,7 +13,6 @@ interface IPirateHunters {
     function safeTransferFrom(address from, address to, uint tokenId, bytes memory _data) external;
 }
 
-
 /**
 * Staking, unstaking, claims
 */
@@ -42,11 +41,9 @@ contract BootyChest is Ownable, IERC721Receiver {
 
     mapping(uint256 => uint256) public bountyHunterIndices;
     mapping(address => Stake[]) public bountyHunterStake;
-    //mapping(address => uint256) public bountyHunterXtraReward;
 
     mapping(uint256 => uint256) public pirateIndices;
     mapping(address => Stake[]) public pirateStake;
-    //mapping(address => uint256) public pirateXtraReward;
     address[] public pirateHolders;
 
     // Total staked tokens
@@ -204,13 +201,25 @@ contract BootyChest is Ownable, IERC721Receiver {
     }
 
     function possibleClaimForToken(uint16 tokenId) public view returns (uint owed) {
-        owed = 0;
-        if (!pirateHunters.isPirate(tokenId)) {
-            Stake memory stake = pirateStake[msg.sender][pirateIndices[tokenId]];
-            owed += _possibleClaimForPirate(stake);
+        uint x = 0;
+        if (pirateHunters.isPirate(tokenId)) {
+            Stake storage stake = pirateStake[msg.sender][pirateIndices[tokenId]];
+            x += _possibleClaimForPirate(stake);
         } else {
-            Stake memory stake = bountyHunterStake[msg.sender][bountyHunterIndices[tokenId]];
-            owed += _possibleClaimForHunter(stake);
+            Stake storage stake = bountyHunterStake[msg.sender][bountyHunterIndices[tokenId]];
+            x += _possibleClaimForHunter(stake);
+        }
+        owed = x;
+    }
+
+    function possibleClaimForTokenStaker(uint16 tokenId) public view returns (Stake memory stake) {
+        // owed = 0;
+        if (pirateHunters.isPirate(tokenId)) {
+            stake = pirateStake[msg.sender][pirateIndices[tokenId]];//pirateStake[msg.sender][0];
+            // owed += _possibleClaimForPirate(stake);
+        } else {
+            stake =  bountyHunterStake[msg.sender][bountyHunterIndices[tokenId]];//bountyHunterStake[msg.sender][0];
+            // owed += _possibleClaimForHunter(stake);
         }
     }
 
@@ -226,7 +235,7 @@ contract BootyChest is Ownable, IERC721Receiver {
             owed = ((lastClaimTimestamp - stake.value) * DAILY_HUNTER_BOOTY_RATE) / 1 days; // stop earning additional $BOOTY if it's all been earned
         }
         // add all extra acquired
-        owed += (bountyHunterReward - stake.value);
+        owed += (bountyHunterReward - stake.xtraReward);
     }
 
     function mintAndBurn(uint amount) internal {
@@ -238,7 +247,7 @@ contract BootyChest is Ownable, IERC721Receiver {
         Stake memory stake = bountyHunterStake[msg.sender][bountyHunterIndices[tokenId]];
 
         owed = _possibleClaimForHunter(stake);
-        require(owed>MINIMUM_BOUNTY_HUNTER_BOOTY_TO_CLAIM, "$BOOTY less than minimum");
+        require(owed > MINIMUM_BOUNTY_HUNTER_BOOTY_TO_CLAIM, "$BOOTY less than minimum");
         //Burning and robbery
 
         if(owed <= TAX_THRESHOLD){
@@ -276,21 +285,26 @@ contract BootyChest is Ownable, IERC721Receiver {
     }
 
     function _possibleClaimForPirate(Stake memory stake) private view returns (uint owed) {
-        require(pirateHunters.ownerOf(stake.tokenId) == address(this), "This NFT does not belong to address");
 
-        require(stake.owner == msg.sender, "This NFT does not belong to address");
-        //owed = (pirateReward - stake.value);
+       require(pirateHunters.ownerOf(stake.tokenId) == address(this), "This NFT does not belong to address");
+       require(stake.owner == msg.sender, "This NFT does not belong to address");
+       //owed = (pirateReward - stake.value);
 
-        if (totalBootyEarned < MAXIMUM_GLOBAL_BOOTY) {
-            // TODO: Shop function to check if there are additional item that can increase earning rate
-            owed = ((block.timestamp - stake.value) * DAILY_PIRATE_BOOTY_RATE) / 1 days;
-        } else if (stake.value > lastClaimTimestamp) {
-            owed = 0; // $BOOTY production stopped already
-        } else {
-            owed = ((lastClaimTimestamp - stake.value) * DAILY_PIRATE_BOOTY_RATE) / 1 days; // stop earning additional $BOOTY if it's all been earned
-        }
-        // add all extra acquired
-        owed += (pirateReward - stake.value);
+
+       uint x = 0;
+       if (totalBootyEarned < MAXIMUM_GLOBAL_BOOTY) {
+           // TODO: Shop function to check if there are additional item that can increase earning rate
+           x = ((block.timestamp - stake.value) * DAILY_PIRATE_BOOTY_RATE) / 1 days;
+       } else if (stake.value > lastClaimTimestamp) {
+           x = 0; // $BOOTY production stopped already
+       } else {
+           x = ((lastClaimTimestamp - stake.value) * DAILY_PIRATE_BOOTY_RATE) / 1 days; // stop earning additional $BOOTY if it's all been earned
+       }
+
+       // owed = 50000 ether;
+//        // add all extra acquired
+        x += (pirateReward - stake.xtraReward);
+        owed = x;
     }
 
     function _claimFromPirate(uint16 tokenId, bool unstake) internal returns (uint owed) {
@@ -334,8 +348,8 @@ contract BootyChest is Ownable, IERC721Receiver {
             pirateStake[msg.sender][pirateIndices[tokenId]] = Stake({
             owner: msg.sender,
             tokenId: uint16(tokenId),
-            value: uint80(block.timestamp),// uint80(pirateReward),
-            xtraReward: 0,
+            value: uint80(block.timestamp),// ,
+            xtraReward: uint80(pirateReward), // take record of total reward as at time of staking
             rank: stake.rank
             }); // reset stake
         }
@@ -361,48 +375,47 @@ contract BootyChest is Ownable, IERC721Receiver {
     }
 
     function rescue(uint16[] calldata tokenIds) external {
-        require(rescueEnabled, "Rescue disabled");
-        uint16 tokenId;
-        Stake memory stake;
+        // require(rescueEnabled, "Rescue disabled");
+        // uint16 tokenId;
+        // Stake memory stake;
 
-        for (uint16 i = 0; i < tokenIds.length; i++) {
-            tokenId = tokenIds[i];
-            if (!pirateHunters.isPirate(tokenId)) {
-                stake = bountyHunterStake[msg.sender][bountyHunterIndices[tokenId]];
+        // for (uint16 i = 0; i < tokenIds.length; i++) {
+        //     tokenId = tokenIds[i];
+        //     if (!pirateHunters.isPirate(tokenId)) {
+        //         stake = bountyHunterStake[msg.sender][bountyHunterIndices[tokenId]];
 
-                require(stake.owner == msg.sender, "This NFT does not belong to address");
+        //         require(stake.owner == msg.sender, "This NFT does not belong to address");
 
-                totalBountyHunterStaked -= 1;
+        //         totalBountyHunterStaked -= 1;
 
-                Stake memory lastStake = bountyHunterStake[msg.sender][bountyHunterStake[msg.sender].length - 1];
-                bountyHunterStake[msg.sender][bountyHunterIndices[tokenId]] = lastStake;
-                bountyHunterIndices[lastStake.tokenId] = bountyHunterIndices[tokenId];
-                bountyHunterStake[msg.sender].pop();
-                delete bountyHunterIndices[tokenId];
+        //         Stake memory lastStake = bountyHunterStake[msg.sender][bountyHunterStake[msg.sender].length - 1];
+        //         bountyHunterStake[msg.sender][bountyHunterIndices[tokenId]] = lastStake;
+        //         bountyHunterIndices[lastStake.tokenId] = bountyHunterIndices[tokenId];
+        //         bountyHunterStake[msg.sender].pop();
+        //         delete bountyHunterIndices[tokenId];
 
-                pirateHunters.safeTransferFrom(address(this), msg.sender, tokenId, "");
+        //         pirateHunters.safeTransferFrom(address(this), msg.sender, tokenId, "");
 
-                emit BountyHunterClaimed(tokenId, 0, true);
-            } else {
-                stake = pirateStake[msg.sender][pirateIndices[tokenId]];
+        //         emit BountyHunterClaimed(tokenId, 0, true);
+        //     } else {
+        //         stake = pirateStake[msg.sender][pirateIndices[tokenId]];
 
-                require(stake.owner == msg.sender, "This NFT does not belong to address");
+        //         require(stake.owner == msg.sender, "This NFT does not belong to address");
 
-                totalPirateStaked -= 1;
+        //         totalPirateStaked -= 1;
 
+        //         Stake memory lastStake = pirateStake[msg.sender][pirateStake[msg.sender].length - 1];
+        //         pirateStake[msg.sender][pirateIndices[tokenId]] = lastStake;
+        //         pirateIndices[lastStake.tokenId] = pirateIndices[tokenId];
+        //         pirateStake[msg.sender].pop();
+        //         delete pirateIndices[tokenId];
+        //         updatePirateOwnerAddressList(msg.sender);
 
-                Stake memory lastStake = pirateStake[msg.sender][pirateStake[msg.sender].length - 1];
-                pirateStake[msg.sender][pirateIndices[tokenId]] = lastStake;
-                pirateIndices[lastStake.tokenId] = pirateIndices[tokenId];
-                pirateStake[msg.sender].pop();
-                delete pirateIndices[tokenId];
-                updatePirateOwnerAddressList(msg.sender);
+        //         pirateHunters.safeTransferFrom(address(this), msg.sender, tokenId, "");
 
-                pirateHunters.safeTransferFrom(address(this), msg.sender, tokenId, "");
-
-                emit PirateClaimed(tokenId, 0, true);
-            }
-        }
+        //         emit PirateClaimed(tokenId, 0, true);
+        //     }
+        // }
     }
 
     // pirate pay tax to Bounty Hunters
@@ -418,6 +431,7 @@ contract BootyChest is Ownable, IERC721Receiver {
 
     //Bounty hunters pay tax to pirate
     function _payTaxBountyHunter(uint _amount) internal {
+
         if (totalPirateStaked == 0) {
             unaccountedPirateRewards += _amount;
             return;
@@ -428,7 +442,6 @@ contract BootyChest is Ownable, IERC721Receiver {
         unaccountedPirateRewards = 0;
     }
 
-
     modifier _updateEarnings() {
         if (totalBootyEarned < MAXIMUM_GLOBAL_BOOTY) {
             totalBootyEarned += ((block.timestamp - lastClaimTimestamp) * totalBountyHunterStaked * DAILY_PIRATE_BOOTY_RATE) / 1 days;
@@ -436,7 +449,6 @@ contract BootyChest is Ownable, IERC721Receiver {
         }
         _;
     }
-
 
     function setRescueEnabled(bool _enabled) external onlyOwner {
         rescueEnabled = _enabled;
