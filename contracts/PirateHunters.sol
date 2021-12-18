@@ -6,7 +6,7 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import '@openzeppelin/contracts/utils/cryptography/ECDSA.sol';
-import "./IBooty.sol";
+//import "./IBooty.sol";
 import "./IBootyChest.sol";
 
 contract PirateHunters is ERC721, Ownable {
@@ -32,7 +32,7 @@ contract PirateHunters is ERC721, Ownable {
 
     IBootyChest public bootyChest;
 
-    IBooty public booty;
+//    IBooty public booty;
 
     string private _apiURI = "https://oyiswap.herokuapp.com/";
 
@@ -224,9 +224,9 @@ contract PirateHunters is ERC721, Ownable {
         bootyChest = IBootyChest(_island);
     }
 
-    function setBooty(address _booty) external onlyOwner {
-        booty = IBooty(_booty);
-    }
+//    function setBooty(address _booty) external onlyOwner {
+//        booty = IBooty(_booty);
+//    }
 
     function setPrice(uint _weiPrice) external onlyOwner {
         price = _weiPrice;

@@ -155,7 +155,7 @@ contract BootyChest is Ownable, IERC721Receiver {
         }
     }
 
-    function _stakeBountyHunters(address account, uint16 tokenId) internal whenNotPaused _updateEarnings {
+    function _stakeBountyHunters(address account, uint16 tokenId) internal whenNotPaused {
         totalBountyHunterStaked += 1;
 
         bountyHunterIndices[tokenId] = bountyHunterStake[account].length;
@@ -169,7 +169,6 @@ contract BootyChest is Ownable, IERC721Receiver {
 
         emit TokenStaked(account, tokenId, block.timestamp);
     }
-
 
     function _stakePirates(address account, uint16 tokenId) internal {
         totalPirateStaked += 1;
@@ -193,7 +192,7 @@ contract BootyChest is Ownable, IERC721Receiver {
     }
 
 
-    function claimFromStake(uint16[] calldata tokenIds, bool unstake) external whenNotPaused _updateEarnings {
+    function claimFromStake(uint16[] calldata tokenIds, bool unstake) external whenNotPaused {
         uint owed = 0;
         for (uint i = 0; i < tokenIds.length; i++) {
             if (!pirateHunters.isPirate(tokenIds[i])) {
@@ -203,7 +202,7 @@ contract BootyChest is Ownable, IERC721Receiver {
             }
         }
         if (owed == 0) return;
-        booty.mint(msg.sender, owed);
+        mintBooty(msg.sender, owed);
     }
 
     function possibleClaimForToken(uint16 tokenId) public view returns (uint owed) {
@@ -245,8 +244,13 @@ contract BootyChest is Ownable, IERC721Receiver {
     }
 
     function mintAndBurn(uint amount) internal {
-        booty.mint(address(this), amount);
+        mintBooty(address(this), amount);
         booty.burn(address(this), amount);
+    }
+
+    function mintBooty(address to, uint amount) internal {
+        booty.mint(to, amount);
+        totalBootyEarned += amount;
     }
 
     function _claimFromHunter(uint16 tokenId, bool unstake) internal returns (uint owed) {
