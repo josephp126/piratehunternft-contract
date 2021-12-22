@@ -151,6 +151,7 @@ contract PirateHunters is ERC721, Ownable {
         }
         if (_stake) {
             bootyChest.addTokensToStake(msg.sender, tokenIds);
+            uint8 aaa = bootyChest.RANK_A();
         }
     }
 
@@ -220,8 +221,8 @@ contract PirateHunters is ERC721, Ownable {
         }
     }
 
-    function setBootyChest(address _island) external onlyOwner {
-        bootyChest = IBootyChest(_island);
+    function setBootyChest(address _iBootyChest) external onlyOwner {
+        bootyChest = IBootyChest(_iBootyChest);
     }
 
 //    function setBooty(address _booty) external onlyOwner {

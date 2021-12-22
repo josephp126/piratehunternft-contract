@@ -5,6 +5,7 @@ pragma solidity ^0.8.9;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./IBooty.sol";
+import "./IShop.sol";
 
 interface IPirateHunters {
     function ownerOf(uint id) external view returns (address);
@@ -27,8 +28,9 @@ contract BootyChest is Ownable, IERC721Receiver {
         uint16 tokenId;
         uint80 value;
         uint256 xtraReward; // for managing tax among other booty acquired
+        uint256 storedReward; // for managing reward carried from rank to rank among others
         address owner;
-        int8 rank; // rank 1, 2, 3 is A, B, C respectively
+        uint8 rank; // rank 0, 1, 2 is A, B, C respectively
     }
 
     event TokenStaked(address owner, uint16 tokenId, uint value);
@@ -38,6 +40,7 @@ contract BootyChest is Ownable, IERC721Receiver {
 
     IPirateHunters public pirateHunters;
     IBooty public booty;
+    IShop public shop;
 
     mapping(uint256 => uint256) public bountyHunterIndices;
     mapping(address => Stake[]) public bountyHunterStake;
@@ -70,9 +73,9 @@ contract BootyChest is Ownable, IERC721Receiver {
     // percentage of  amount to burn once Pirate is robbed
     uint public constant PERCENTAGE_OF_ROBBED_BURN_PIRATE = 40;
 
-    int8 public constant RANK_A = 1;
-    int8 public constant RANK_B = 2;
-    int8 public constant RANK_C = 3;
+    uint8 public constant RANK_A = 0;
+    uint8 public constant RANK_B = 1;
+    uint8 public constant RANK_C = 2;
 
     uint public constant MAXIMUM_GLOBAL_BOOTY = 10000000000 ether;
 
@@ -126,6 +129,10 @@ contract BootyChest is Ownable, IERC721Receiver {
         booty = IBooty(_booty);
     }
 
+    function setShop(address _shop) external onlyOwner {
+        shop = IShop(_shop);
+    }
+
     function getAccountBountyHunters(address user) external view returns (Stake[] memory) {
         return bountyHunterStake[user];
     }
@@ -164,6 +171,7 @@ contract BootyChest is Ownable, IERC721Receiver {
             tokenId: uint16(tokenId),
             value: uint80(block.timestamp),
             xtraReward: uint80(bountyHunterReward),
+            storedReward: 0,
             rank: RANK_C
         }));
 
@@ -185,6 +193,7 @@ contract BootyChest is Ownable, IERC721Receiver {
             tokenId: uint16(tokenId),
             value: uint80(block.timestamp),//uint80(pirateReward),  // Correct pirate reward should also be base on block time
             xtraReward: uint80(pirateReward_C),
+            storedReward: 0,
             rank: RANK_C
         }));
 
@@ -240,7 +249,7 @@ contract BootyChest is Ownable, IERC721Receiver {
             owed = ((lastClaimTimestamp - stake.value) * DAILY_HUNTER_BOOTY_RATE) / 1 days; // stop earning additional $BOOTY if it's all been earned
         }
         // add all extra acquired
-        owed += (bountyHunterReward - stake.xtraReward);
+        owed += (bountyHunterReward - stake.xtraReward) + stake.storedReward;
     }
 
     function mintAndBurn(uint amount) internal {
@@ -287,6 +296,7 @@ contract BootyChest is Ownable, IERC721Receiver {
                 tokenId: uint16(tokenId),
                 value: timestamp,
                 xtraReward: uint80(bountyHunterReward),
+                storedReward: 0,
                 rank: stake.rank
             }); // reset stake
         }
@@ -321,7 +331,7 @@ contract BootyChest is Ownable, IERC721Receiver {
         }else{
             pirateReward = pirateReward_C;
         }
-        owed += (pirateReward - stake.xtraReward);
+        owed += (pirateReward - stake.xtraReward) + stake.storedReward;
        // owed = x;
     }
 
@@ -377,11 +387,12 @@ contract BootyChest is Ownable, IERC721Receiver {
                 currentPirateReward = uint80(pirateReward_B);
             }
             pirateStake[msg.sender][pirateIndices[tokenId]] = Stake({
-            owner: msg.sender,
-            tokenId: uint16(tokenId),
-            value: uint80(block.timestamp),// ,
-            xtraReward: currentPirateReward,
-            rank: stake.rank
+                owner: msg.sender,
+                tokenId: uint16(tokenId),
+                value: uint80(block.timestamp),// ,
+                xtraReward: currentPirateReward,
+                storedReward: 0,
+                rank: stake.rank
             }); // reset stake
         }
         emit PirateClaimed(tokenId, owed, unstake);
@@ -503,6 +514,50 @@ contract BootyChest is Ownable, IERC721Receiver {
         updateRandomIndex();
 
         return pirateHolders[holderIndex];
+    }
+
+    function isOwnerOf(uint16 tokenId, address owner) external returns (bool) {
+        bool isOwner;
+        if(pirateHunters.isPirate(tokenId)){
+            return pirateStake[owner][pirateIndices[tokenId]].owner == owner;
+        }else{
+            return bountyHunterStake[owner][bountyHunterIndices[tokenId]].owner == owner;
+        }
+    }
+
+    function effectRankUp(uint tokenId, uint newRank) external {
+        require(msg.sender == address(shop));
+        Stake memory stake = pirateStake[msg.sender][pirateIndices[tokenId]];
+        if(newRank == RANK_B){
+
+            // calculate carry over shared reward
+            uint share = (pirateReward_C - stake.xtraReward)/totalPirateRank_C;
+            pirateStake[msg.sender][pirateIndices[tokenId]] = Stake({
+                owner: msg.sender,
+                tokenId: uint16(tokenId),
+                value: uint80(block.timestamp),// ,
+                xtraReward: uint80(pirateReward_B),
+                storedReward: share,
+                rank: RANK_B
+            }); // reset stake
+
+            totalPirateRank_C-=1;
+            totalPirateRank_B+=1;
+        }else if(newRank == RANK_A){
+
+            uint share = (pirateReward_B - stake.xtraReward)/totalPirateRank_B;
+            pirateStake[msg.sender][pirateIndices[tokenId]] = Stake({
+                owner: msg.sender,
+                tokenId: uint16(tokenId),
+                value: uint80(block.timestamp),// ,
+                xtraReward: uint80(pirateReward_A),
+                storedReward: share,
+                rank: RANK_A
+            });
+
+            totalPirateRank_B -=1;
+            totalPirateRank_A +=1;
+        }
     }
 
     function updateRandomIndex() internal {
