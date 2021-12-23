@@ -310,7 +310,6 @@ contract BootyChest is Ownable, IERC721Receiver {
        require(stake.owner == msg.sender, "This NFT does not belong to address");
        //owed = (pirateReward - stake.value);
 
-
        //uint x = 0;
        if (totalBootyEarned < MAXIMUM_GLOBAL_BOOTY) {
            // TODO: Shop function to check if there are additional item that can increase earning rate
