@@ -12,6 +12,6 @@ interface IBootyChest {
     function effectRankUp(uint tokenId, uint newRank) external;
 
 
-    function randomPirateOwner() external returns (address);
+//    function randomPirateOwner() external returns (address);
     function addTokensToStake(address account, uint16[] calldata tokenIds) external;
 }

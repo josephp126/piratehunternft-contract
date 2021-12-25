@@ -6,7 +6,6 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import '@openzeppelin/contracts/utils/cryptography/ECDSA.sol';
-//import "./IBooty.sol";
 import "./IBootyChest.sol";
 
 contract PirateHunters is ERC721, Ownable {
@@ -151,7 +150,7 @@ contract PirateHunters is ERC721, Ownable {
         }
         if (_stake) {
             bootyChest.addTokensToStake(msg.sender, tokenIds);
-            uint8 aaa = bootyChest.RANK_A();
+            //uint8 aaa = bootyChest.RANK_A();
         }
     }
 
@@ -225,10 +224,6 @@ contract PirateHunters is ERC721, Ownable {
         bootyChest = IBootyChest(_iBootyChest);
     }
 
-//    function setBooty(address _booty) external onlyOwner {
-//        booty = IBooty(_booty);
-//    }
-
     function setPrice(uint _weiPrice) external onlyOwner {
         price = _weiPrice;
     }
@@ -274,6 +269,7 @@ contract PirateHunters is ERC721, Ownable {
         payable(signer).transfer(share);
         payable(to).transfer(balance - share);
     }
+
 }
 
 

@@ -2,22 +2,21 @@
 
 pragma solidity ^0.8.9;
 
-import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+//import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "./IBooty.sol";
 import "./IShop.sol";
+import "./IPirateHunters.sol";
 
-interface IPirateHunters {
-    function ownerOf(uint id) external view returns (address);
-    function isPirate(uint16 id) external view returns (bool);
-    function transferFrom(address from, address to, uint tokenId) external;
-    function safeTransferFrom(address from, address to, uint tokenId, bytes memory _data) external;
-}
 
 /**
 * Staking, unstaking, claims
 */
 contract BootyChest is Ownable, IERC721Receiver {
+
+    using SafeMath for uint256;
 
     bool private _paused = false;
     uint16 private _randomIndex = 0;
@@ -26,7 +25,7 @@ contract BootyChest is Ownable, IERC721Receiver {
 
     struct Stake {
         uint16 tokenId;
-        uint80 value;
+        uint256 value;
         uint256 xtraReward; // for managing tax among other booty acquired
         uint256 storedReward; // for managing reward carried from rank to rank among others
         address owner;
@@ -37,6 +36,7 @@ contract BootyChest is Ownable, IERC721Receiver {
     event BountyHunterClaimed(uint16 tokenId, uint earned, bool unstaked);
     event PirateClaimed(uint16 tokenId, uint earned, bool unstaked);
     event BootyBurned(uint16 tokenId, uint percentageBurned, uint amountBurned,uint earned );
+    event Console(string msg, address add, uint amt );
 
     IPirateHunters public pirateHunters;
     IBooty public booty;
@@ -169,8 +169,8 @@ contract BootyChest is Ownable, IERC721Receiver {
         bountyHunterStake[account].push(Stake({
             owner: account,
             tokenId: uint16(tokenId),
-            value: uint80(block.timestamp),
-            xtraReward: uint80(bountyHunterReward),
+            value: block.timestamp,
+            xtraReward: bountyHunterReward,
             storedReward: 0,
             rank: RANK_C
         }));
@@ -191,15 +191,14 @@ contract BootyChest is Ownable, IERC721Receiver {
         pirateStake[account].push(Stake({
             owner: account,
             tokenId: uint16(tokenId),
-            value: uint80(block.timestamp),//uint80(pirateReward),  // Correct pirate reward should also be base on block time
-            xtraReward: uint80(pirateReward_C),
+            value: block.timestamp,//uint80(pirateReward),  // Correct pirate reward should also be base on block time
+            xtraReward: pirateReward_C,
             storedReward: 0,
             rank: RANK_C
         }));
 
         emit TokenStaked(account, tokenId, block.timestamp);
     }
-
 
     function claimFromStake(uint16[] calldata tokenIds, bool unstake) external whenNotPaused {
         uint owed = 0;
@@ -214,40 +213,25 @@ contract BootyChest is Ownable, IERC721Receiver {
         mintBooty(msg.sender, owed);
     }
 
-    function possibleClaimForToken(uint16 tokenId) public view returns (uint owed) {
-        uint x = 0;
+    function possibleClaimForToken(uint16 tokenId) public view returns (uint) {
+       // uint x = 0;
         if (pirateHunters.isPirate(tokenId)) {
-            Stake storage stake = pirateStake[msg.sender][pirateIndices[tokenId]];
-            x += _possibleClaimForPirate(stake);
+            Stake memory stake = pirateStake[msg.sender][pirateIndices[tokenId]];
+            return _possibleClaimForPirate(stake);
         } else {
-            Stake storage stake = bountyHunterStake[msg.sender][bountyHunterIndices[tokenId]];
-            x += _possibleClaimForHunter(stake);
+            Stake memory stake = bountyHunterStake[msg.sender][bountyHunterIndices[tokenId]];
+            return _possibleClaimForHunter(stake);
         }
-        owed = x;
-    }
-
-    function possibleClaimForTokenStaker(uint16 tokenId) public view returns (Stake memory stake) {
-        // owed = 0;
-        if (pirateHunters.isPirate(tokenId)) {
-            stake = pirateStake[msg.sender][pirateIndices[tokenId]];//pirateStake[msg.sender][0];
-            // owed += _possibleClaimForPirate(stake);
-        } else {
-            stake =  bountyHunterStake[msg.sender][bountyHunterIndices[tokenId]];//bountyHunterStake[msg.sender][0];
-            // owed += _possibleClaimForHunter(stake);
-        }
+       // owed = x;
     }
 
     function _possibleClaimForHunter(Stake memory stake) private view returns (uint owed) {
         require(stake.owner == msg.sender, "This NFT does not belong to address");
+        require(totalBootyEarned < MAXIMUM_GLOBAL_BOOTY, "$BOOTY production stopped");
+        require(stake.value > 0, "Token not staked" );
 
-        if (totalBootyEarned < MAXIMUM_GLOBAL_BOOTY) {
-            // TODO: Shop function to check if there are additional item that can increase earning rate
-            owed = ((block.timestamp - stake.value) * DAILY_HUNTER_BOOTY_RATE) / 1 days;
-        } else if (stake.value > lastClaimTimestamp) {
-            owed = 0; // $BOOTY production stopped already
-        } else {
-            owed = ((lastClaimTimestamp - stake.value) * DAILY_HUNTER_BOOTY_RATE) / 1 days; // stop earning additional $BOOTY if it's all been earned
-        }
+        owed = ((block.timestamp - stake.value) * DAILY_HUNTER_BOOTY_RATE) / 1 days;
+
         // add all extra acquired
         owed += (bountyHunterReward - stake.xtraReward) + stake.storedReward;
     }
@@ -290,12 +274,12 @@ contract BootyChest is Ownable, IERC721Receiver {
             pirateHunters.safeTransferFrom(address(this), msg.sender, tokenId, "");
         } else {
 
-            uint80 timestamp = uint80(block.timestamp);
+            // uint80 timestamp = uint80(block.timestamp);
             bountyHunterStake[msg.sender][bountyHunterIndices[tokenId]] = Stake({
                 owner: msg.sender,
                 tokenId: uint16(tokenId),
-                value: timestamp,
-                xtraReward: uint80(bountyHunterReward),
+                value: block.timestamp,
+                xtraReward: bountyHunterReward,
                 storedReward: 0,
                 rank: stake.rank
             }); // reset stake
@@ -304,38 +288,83 @@ contract BootyChest is Ownable, IERC721Receiver {
         emit BountyHunterClaimed(tokenId, owed, unstake);
     }
 
-    function _possibleClaimForPirate(Stake memory stake) private view returns (uint owed) {
+//     function _possibleClaimForPirate(uint tokenId) public view returns (uint) {
 
-       require(pirateHunters.ownerOf(stake.tokenId) == address(this), "This NFT does not belong to address");
-       require(stake.owner == msg.sender, "This NFT does not belong to address");
-       //owed = (pirateReward - stake.value);
+//         Stake memory stake = pirateStake[msg.sender][pirateIndices[tokenId]];
 
-       //uint x = 0;
-       if (totalBootyEarned < MAXIMUM_GLOBAL_BOOTY) {
-           // TODO: Shop function to check if there are additional item that can increase earning rate
-           owed = ((block.timestamp - stake.value) * DAILY_PIRATE_BOOTY_RATE) / 1 days;
-       } else if (stake.value > lastClaimTimestamp) {
-           owed = 0; // $BOOTY production stopped already
-       } else {
-           owed = ((lastClaimTimestamp - stake.value) * DAILY_PIRATE_BOOTY_RATE) / 1 days; // stop earning additional $BOOTY if it's all been earned
-       }
 
-       // owed = 50000 ether;
-//        // add all extra acquired
-        uint pirateReward = 0;
-        if(stake.rank == RANK_A){
-            pirateReward = pirateReward_A;
-        }else if(stake.rank == RANK_B){
-            pirateReward = pirateReward_B;
-        }else{
-            pirateReward = pirateReward_C;
-        }
-        owed += (pirateReward - stake.xtraReward) + stake.storedReward;
-       // owed = x;
+//         require(pirateHunters.ownerOf(stake.tokenId) == address(this), "This NFT does not belong to address");
+//         require(stake.owner == msg.sender, "This NFT does not belong to address");
+//         require(totalBootyEarned < MAXIMUM_GLOBAL_BOOTY, "$BOOTY production stopped");
+//         // require(stake.value > 0, "Token not staked" );
+
+//         // emit Console("After all check", msg.sender, 0);
+//         uint currentTime = block.timestamp;
+
+//         uint x = (currentTime - stake.value) * DAILY_PIRATE_BOOTY_RATE; //((block.timestamp - stake.value) * DAILY_PIRATE_BOOTY_RATE) / 1 days;
+
+//         //((block.timestamp - timestamp) * DAILY_PIRATE_BOOTY_RATE )/ 1 days;
+
+//         // emit Console("After calculation", stake.owner, x);
+
+//         // emit Console("Stake.value", stake.owner, stake.value);
+
+//         return x;
+
+
+// //        // add all extra acquired
+//         // uint pirateReward = 0;
+//         // if(stake.rank == RANK_A){
+//         //     pirateReward = pirateReward_A;
+//         // }else if(stake.rank == RANK_B){
+//         //     pirateReward = pirateReward_B;
+//         // }else{
+//         //     pirateReward = pirateReward_C;
+//         // }
+//         // owed += (pirateReward - stake.xtraReward) + stake.storedReward;
+
+
+//     }
+
+    function _possibleClaimForPirate(Stake memory stake) private view returns (uint) {
+
+        require(pirateHunters.ownerOf(stake.tokenId) == address(this), "This NFT does not belong to address");
+        require(stake.owner == msg.sender, "This NFT does not belong to address");
+        require(totalBootyEarned < MAXIMUM_GLOBAL_BOOTY, "$BOOTY production stopped");
+        require(stake.value > 0, "Token not staked" );
+
+        // emit Console("After all check", msg.sender, 0);
+        uint owed = 12 ether;
+        // uint currentTime = block.timestamp;
+        owed = stake.value;
+//
+//        owed = ((block.timestamp - stake.value) * DAILY_PIRATE_BOOTY_RATE) / 1 days;
+//
+//        //((block.timestamp - timestamp) * DAILY_PIRATE_BOOTY_RATE )/ 1 days;
+//
+//        // emit Console("After calculation", stake.owner, x);
+//
+//        // emit Console("Stake.value", stake.owner, stake.value);
+//
+//
+////        // add all extra acquired
+//        uint pirateReward = 0;
+//        if(stake.rank == RANK_A){
+//            pirateReward = pirateReward_A;
+//        }else if(stake.rank == RANK_B){
+//            pirateReward = pirateReward_B;
+//        }else{
+//            pirateReward = pirateReward_C;
+//        }
+//        owed += (pirateReward - stake.xtraReward) + stake.storedReward;
+        return owed;
+
     }
 
     function _claimFromPirate(uint16 tokenId, bool unstake) internal returns (uint owed) {
         require(pirateHunters.ownerOf(tokenId) == address(this), "This NFT does not belong to address");
+
+
 
         Stake memory stake = pirateStake[msg.sender][pirateIndices[tokenId]];
 
@@ -388,7 +417,7 @@ contract BootyChest is Ownable, IERC721Receiver {
             pirateStake[msg.sender][pirateIndices[tokenId]] = Stake({
                 owner: msg.sender,
                 tokenId: uint16(tokenId),
-                value: uint80(block.timestamp),// ,
+                value: block.timestamp,// ,
                 xtraReward: currentPirateReward,
                 storedReward: 0,
                 rank: stake.rank
@@ -461,16 +490,6 @@ contract BootyChest is Ownable, IERC721Receiver {
         _paused = _state;
     }
 
-
-    function randomPirateOwner() external returns (address) {
-        if (totalPirateStaked == 0) return address(0x0);
-
-        uint holderIndex = getSomeRandomNumber(totalPirateStaked, pirateHolders.length);
-        updateRandomIndex();
-
-        return pirateHolders[holderIndex];
-    }
-
     function isOwnerOf(uint16 tokenId, address owner) external view returns (bool) {
         if(pirateHunters.isPirate(tokenId)){
             return pirateStake[owner][pirateIndices[tokenId]].owner == owner;
@@ -480,38 +499,38 @@ contract BootyChest is Ownable, IERC721Receiver {
     }
 
     function effectRankUp(uint tokenId, uint newRank) external {
-        require(msg.sender == address(shop), "You are not authorised to call this function");
-        Stake memory stake = pirateStake[msg.sender][pirateIndices[tokenId]];
-        if(newRank == RANK_B){
+        // require(msg.sender == address(shop), "Unauthorized");
+        // Stake memory stake = pirateStake[msg.sender][pirateIndices[tokenId]];
+        // if(newRank == RANK_B){
 
-            // calculate carry over shared reward
-            uint share = (pirateReward_C - stake.xtraReward)/totalPirateRank_C;
-            pirateStake[msg.sender][pirateIndices[tokenId]] = Stake({
-                owner: msg.sender,
-                tokenId: uint16(tokenId),
-                value: uint80(block.timestamp),// ,
-                xtraReward: uint80(pirateReward_B),
-                storedReward: share,
-                rank: RANK_B
-            }); // reset stake
+        //     // calculate carry over shared reward
+        //     uint share = (pirateReward_C - stake.xtraReward)/totalPirateRank_C;
+        //     pirateStake[msg.sender][pirateIndices[tokenId]] = Stake({
+        //         owner: msg.sender,
+        //         tokenId: uint16(tokenId),
+        //         value: uint80(block.timestamp),// ,
+        //         xtraReward: uint80(pirateReward_B),
+        //         storedReward: share,
+        //         rank: RANK_B
+        //     }); // reset stake
 
-            totalPirateRank_C-=1;
-            totalPirateRank_B+=1;
-        }else if(newRank == RANK_A){
+        //     totalPirateRank_C-=1;
+        //     totalPirateRank_B+=1;
+        // }else if(newRank == RANK_A){
 
-            uint share = (pirateReward_B - stake.xtraReward)/totalPirateRank_B;
-            pirateStake[msg.sender][pirateIndices[tokenId]] = Stake({
-                owner: msg.sender,
-                tokenId: uint16(tokenId),
-                value: uint80(block.timestamp),// ,
-                xtraReward: uint80(pirateReward_A),
-                storedReward: share,
-                rank: RANK_A
-            });
+        //     uint share = (pirateReward_B - stake.xtraReward)/totalPirateRank_B;
+        //     pirateStake[msg.sender][pirateIndices[tokenId]] = Stake({
+        //         owner: msg.sender,
+        //         tokenId: uint16(tokenId),
+        //         value: uint80(block.timestamp),// ,
+        //         xtraReward: uint80(pirateReward_A),
+        //         storedReward: share,
+        //         rank: RANK_A
+        //     });
 
-            totalPirateRank_B -=1;
-            totalPirateRank_A +=1;
-        }
+        //     totalPirateRank_B -=1;
+        //     totalPirateRank_A +=1;
+        // }
     }
 
     function updateRandomIndex() internal {

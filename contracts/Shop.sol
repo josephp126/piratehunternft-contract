@@ -6,35 +6,10 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./IBootyChest.sol";
 import "./IBooty.sol";
+// import "./IPirateHunters.sol";
+import "./Shared.sol";
 
-interface IPirateHunters {
-    function ownerOf(uint id) external view returns (address);
-    function isPirate(uint16 id) external view returns (bool);
-//    function transferFrom(address from, address to, uint tokenId) external;
-//    function safeTransferFrom(address from, address to, uint tokenId, bytes memory _data) external;
-}
-
-contract Shop is Ownable {
-
-    struct PirateItem {
-        string name;
-        uint8 id; // should be index of item in the array
-        bool offensive;
-        bool percentage;
-        uint value;
-        uint expired; // to be specified in days
-        uint price;
-        uint supply;
-        string img;
-        bool valid; // this should not be listed for purchase if render invalid
-    }
-
-    struct PurchasedPirateItem {
-        uint16 tokenId;
-        uint8 itemId; // should be index of item in the array
-        uint time; // timeStamp of purchase or last time used
-        uint expired; //
-    }
+contract Shop is Ownable, SharedStructs {
 
     struct Bounty {
         string name;
@@ -76,25 +51,33 @@ contract Shop is Ownable {
 
     IBooty public booty;
 
-    IPirateHunters public pirateHunters;
+    // IPirateHunters public pirateHunters;
 
     constructor() {
 
-        addRank(RankUp({
-            name : "A",
-            id : bootyChest.RANK_A(),
-            requireId : bootyChest.RANK_B(),
-            price : 300000 ether,
-            img : ''
-        }));
+        // RankUp memory rp = RankUp({
+        //     name : "A",
+        //     id : bootyChest.RANK_A(),
+        //     requireId : bootyChest.RANK_B(),
+        //     price : 300000 ether,
+        //     img : ''
+        // });
 
-        addRank(RankUp({
-            name : "B",
-            id : bootyChest.RANK_B(),
-            requireId : bootyChest.RANK_C(),
-            price : 450000 ether,
-            img : ''
-        }));
+        // addRank(RankUp({
+        //     name : "A",
+        //     id : bootyChest.RANK_A(),
+        //     requireId : bootyChest.RANK_B(),
+        //     price : 300000 ether,
+        //     img : ''
+        // }));
+
+        // addRank(RankUp({
+        //     name : "B",
+        //     id : bootyChest.RANK_B(),
+        //     requireId : bootyChest.RANK_C(),
+        //     price : 450000 ether,
+        //     img : ''
+        // }));
     }
 
     function getPirateItemPrice(uint itemId, uint qty) private view returns (uint price) {
@@ -140,7 +123,7 @@ contract Shop is Ownable {
     }
 
 
-    function getOwnerPurchasedItems(address owner) external returns(PurchasedPirateItem[] memory) {
+    function getOwnerValidPurchasedItems(address owner) external returns(PurchasedPirateItem[] memory) {
         require(msg.sender == address(bootyChest), "You are not authorised to call this function");
 
         for(uint8 i = 0; i< pirateItemsPurchased[owner].length; i++){
@@ -151,6 +134,11 @@ contract Shop is Ownable {
                 pirateItemsPurchased[owner].pop();
             }
         }
+        return pirateItemsPurchased[owner];
+    }
+
+    function getOwnerPurchasedItems(address owner) external view returns(PurchasedPirateItem[] memory) {
+        require(msg.sender == address(bootyChest), "You are not authorised to call this function");
         return pirateItemsPurchased[owner];
     }
 
@@ -183,6 +171,34 @@ contract Shop is Ownable {
 
         return pirateItem;
     }
+
+
+    // function possibleRewardOnPirateItem(address owner, uint16 idx, uint16 tokenId) external view returns(PirateItem memory) {
+    //     require(msg.sender == address(bootyChest), "You are not authorised to call this function");
+    //     //        bootyChest.isOwnerOf()
+    //     PurchasedPirateItem memory item = pirateItemsPurchased[owner][idx];
+    //     require(item.expired == 0 , "Address of owner does not have a valid purchase");
+    //     require(item.tokenId == tokenId , "token Id not equal, invalid index selected");
+    //     PirateItem memory pirateItem = pirateItems[item.itemId];
+
+    //     // Check if item is expired then remove item from purchased and return
+    //     if(block.timestamp >= item.expired  && item.time >= item.expired){
+    //         // expired but can't remove to avoid inconsistency in indexing
+
+    //         pirateItem.value = 0;
+    //         pirateItem.expired = 0; // represents days(time) that can be claim from last time item was use till now
+    //         //reject("item expired");
+    //         return pirateItem;
+    //     }
+
+    //     // calculate time difference from last time used used
+    //     uint current = block.timestamp;
+    //     uint diff = item.expired < current ? item.expired - item.time : current - item.time; // (now - lastTime used or purchased) or (expired - lastTime if expired)
+    //     // set time in hunter item to number of days or time it can be use in increasing or decreasing rate
+    //     pirateItem.expired = diff; // using this to pass time diff to bootychest to use
+
+    //     return pirateItem;
+    // }
 
     function purchaseBounty(uint[] calldata tokenIds, uint itemId) external payable {
 
@@ -250,7 +266,7 @@ contract Shop is Ownable {
         booty = IBooty(_iBooty);
     }
 
-    function addRank(RankUp memory _item) public onlyOwner {
+    function addRank(RankUp memory _item) external onlyOwner {
         uint idx = rankUps.length;
         _item.id = idx;
         rankUps.push(_item);
