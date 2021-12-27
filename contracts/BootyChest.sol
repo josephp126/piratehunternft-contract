@@ -113,21 +113,29 @@ contract BootyChest is Ownable, IERC721Receiver {
         _;
     }
 
-    function setPirateHunters(address _pirateHunters) external onlyOwner {
+//    function setPirateHunters(address _pirateHunters) external onlyOwner {
+//        pirateHunters = IPirateHunters(_pirateHunters);
+//    }
+//
+//    function setBooty(address _booty) external onlyOwner {
+//        booty = IBooty(_booty);
+//    }
+//
+//    function setShop(address _shop) external onlyOwner {
+//        shop = IShop(_shop);
+//    }
+//
+//    function setUtils(address _utils) external onlyOwner {
+//        utils = IUtils(_utils);
+//    }
+
+    function setContracts(address _pirateHunters, address _booty, address _shop, address _utils) external onlyOwner {
         pirateHunters = IPirateHunters(_pirateHunters);
-    }
-
-    function setBooty(address _booty) external onlyOwner {
         booty = IBooty(_booty);
-    }
-
-    function setShop(address _shop) external onlyOwner {
         shop = IShop(_shop);
-    }
-
-    function setUtils(address _utils) external onlyOwner {
         utils = IUtils(_utils);
     }
+
 
     function getAccountBountyHunters(address user) external view returns (Stake[] memory) {
         return bountyHunterStake[user];
@@ -225,7 +233,8 @@ contract BootyChest is Ownable, IERC721Receiver {
         require(totalBootyEarned < MAXIMUM_GLOBAL_BOOTY, "$BOOTY production stopped");
         require(stake.value > 0, "Token not staked" );
 
-        owed = ((block.timestamp - stake.value) * DAILY_HUNTER_BOOTY_RATE) / 1 days;
+        uint current = block.timestamp;
+        owed = ((current - stake.value) * DAILY_HUNTER_BOOTY_RATE) / 1 days;
 
         // add all extra acquired
         owed += (bountyHunterReward - stake.xtraReward) + stake.storedReward;
@@ -290,7 +299,8 @@ contract BootyChest is Ownable, IERC721Receiver {
         require(totalBootyEarned < MAXIMUM_GLOBAL_BOOTY, "$BOOTY production stopped");
         require(stake.value > 0, "Token not staked" );
 
-        uint owed = ((block.timestamp - stake.value) * DAILY_PIRATE_BOOTY_RATE) / 1 days;
+        uint current = block.timestamp;
+        uint owed = ((current - stake.value) * DAILY_PIRATE_BOOTY_RATE) / 1 days;
 
         uint pirateReward = 0;
         if(stake.rank == RANK_A){
@@ -315,8 +325,6 @@ contract BootyChest is Ownable, IERC721Receiver {
         owed = _possibleClaimForPirate(stake);
 
         require(owed >= MINIMUM_PIRATE_BOOTY_TO_CLAIM, "$BOOTY not upto minimum claimable ");
-
-
 
         if(address(shop) != address(0))
             owed = shop.useOffensiveItems(tokenId, DAILY_PIRATE_BOOTY_RATE, owed);  // offensive only
@@ -433,10 +441,6 @@ contract BootyChest is Ownable, IERC721Receiver {
         _;
     }
 
-    function setRescueEnabled(bool _enabled) external onlyOwner {
-        rescueEnabled = _enabled;
-    }
-
     function setPaused(bool _state) external onlyOwner {
         _paused = _state;
     }
@@ -459,8 +463,8 @@ contract BootyChest is Ownable, IERC721Receiver {
              pirateStake[msg.sender][pirateIndices[tokenId]] = Stake({
                  owner: msg.sender,
                  tokenId: uint16(tokenId),
-                 value: uint80(block.timestamp),// ,
-                 xtraReward: uint80(pirateReward_B),
+                 value: block.timestamp,
+                 xtraReward: pirateReward_B,
                  storedReward: share,
                  rank: RANK_B
              }); // reset stake
@@ -473,8 +477,8 @@ contract BootyChest is Ownable, IERC721Receiver {
              pirateStake[msg.sender][pirateIndices[tokenId]] = Stake({
                  owner: msg.sender,
                  tokenId: uint16(tokenId),
-                 value: uint80(block.timestamp),// ,
-                 xtraReward: uint80(pirateReward_A),
+                 value: block.timestamp,
+                 xtraReward: pirateReward_A,
                  storedReward: share,
                  rank: RANK_A
              });
