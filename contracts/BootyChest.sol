@@ -28,7 +28,7 @@ contract BootyChest is Ownable, IERC721Receiver {
 
     struct Stake {
         uint16 tokenId;
-        uint256 value;
+        uint256 value;  // keep time stamp of entry
         uint256 xtraReward; // for managing tax among other booty acquired
         uint256 storedReward; // for managing reward carried from rank to rank among others
         address owner;
@@ -125,7 +125,7 @@ contract BootyChest is Ownable, IERC721Receiver {
         shop = IShop(_shop);
     }
 
-    function setShop(address _utils) external onlyOwner {
+    function setUtils(address _utils) external onlyOwner {
         utils = IUtils(_utils);
     }
 
@@ -290,21 +290,8 @@ contract BootyChest is Ownable, IERC721Receiver {
         require(totalBootyEarned < MAXIMUM_GLOBAL_BOOTY, "$BOOTY production stopped");
         require(stake.value > 0, "Token not staked" );
 
-        // emit Console("After all check", msg.sender, 0);
-//        uint owed = 12 ether;
-        // uint currentTime = block.timestamp;
-//        owed = stake.value;
-//
         uint owed = ((block.timestamp - stake.value) * DAILY_PIRATE_BOOTY_RATE) / 1 days;
-//
-//        //((block.timestamp - timestamp) * DAILY_PIRATE_BOOTY_RATE )/ 1 days;
-//
-//        // emit Console("After calculation", stake.owner, x);
-//
-//        // emit Console("Stake.value", stake.owner, stake.value);
-//
-//
-////        // add all extra acquired
+
         uint pirateReward = 0;
         if(stake.rank == RANK_A){
             pirateReward = pirateReward_A;
@@ -329,6 +316,11 @@ contract BootyChest is Ownable, IERC721Receiver {
 
         require(owed >= MINIMUM_PIRATE_BOOTY_TO_CLAIM, "$BOOTY not upto minimum claimable ");
 
+
+
+        if(address(shop) != address(0))
+            owed = shop.useOffensiveItems(tokenId, DAILY_PIRATE_BOOTY_RATE, owed);  // offensive only
+
         if(owed <= TAX_THRESHOLD){
             uint tax = (TAX_PERCENTAGE_PIRATE * owed) /100;
             owed -= tax;
@@ -336,7 +328,11 @@ contract BootyChest is Ownable, IERC721Receiver {
         }else{
             if (utils.getSomeRandomNumber(tokenId, 100) <= 50) {
                 uint burn = (PERCENTAGE_OF_ROBBED_BURN_PIRATE * owed) /100;
-                _payTaxPirate(owed-burn); // pay 60% of what is robbed
+
+                uint tax = owed-burn;
+                if(address(shop) != address(0))
+                    tax = shop.useDefensiveItems(tokenId, tax); // defensive only
+                _payTaxPirate(tax); // pay 60% of what is robbed
                 mintAndBurn(burn); // burn 40%
                 emit BootyBurned(tokenId, PERCENTAGE_OF_ROBBED_BURN_PIRATE, owed, 0 );
                 owed = 0;

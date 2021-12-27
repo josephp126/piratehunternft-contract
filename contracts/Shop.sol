@@ -142,6 +142,24 @@ contract Shop is Ownable, SharedStructs {
         return pirateItemsPurchased[owner];
     }
 
+    function useOffensiveItems(uint16 tokenId, uint bootyRate, uint owed) external returns(uint){
+        require(msg.sender == address(bootyChest), "You are not authorised to call this function");
+        return owed;
+    }
+    function useDefensiveItems(uint16 tokenId, uint tax) external returns(uint){
+        require(msg.sender == address(bootyChest), "You are not authorised to call this function");
+        return tax;
+    }
+
+    function estOffensiveItems(uint16 tokenId, uint bootyRate, uint owed) external view returns(uint){
+        require(msg.sender == address(bootyChest), "You are not authorised to call this function");
+        return owed;
+    }
+    function estDefensiveItems(uint16 tokenId, uint tax) external view returns(uint){
+        require(msg.sender == address(bootyChest), "You are not authorised to call this function");
+        return tax;
+    }
+
     function usePirateItem(address owner, uint16 idx, uint16 tokenId) external returns(PirateItem memory) {
         require(msg.sender == address(bootyChest), "You are not authorised to call this function");
 //        bootyChest.isOwnerOf()

@@ -12,6 +12,7 @@ interface SharedStructs {
         bool percentage;
         uint value;
         uint expired; // to be specified in days
+        uint noOfTime; // useful for item with max maximum time of usage
         uint price;
         uint supply;
         string img;

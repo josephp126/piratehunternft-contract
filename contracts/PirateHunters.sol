@@ -113,7 +113,7 @@ contract PirateHunters is ERC721, Ownable {
         require(privateSale, "public sale is not currently running");
         address recover = recoverSignerAddress(msg.sender, signature);
         require(recover == signer, "Address not whitelisted for the presale");
-        balanceOf((balanceOf(msg.sender) + _amount) <= 10, " would exceedMaximum mint per wallet for presale");
+        require((balanceOf(msg.sender) + _amount) <= 10, " would exceedMaximum mint per wallet for presale");
         mintX(_amount, _stake);
     }
 
