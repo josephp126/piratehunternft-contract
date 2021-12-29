@@ -43,8 +43,6 @@ contract PirateHunters is ERC721, Ownable {
 
     mapping(uint16 => address) private _randomSource;
 
-    event TokenStolen(address owner, uint16 tokenId, address thief);
-
     constructor() ERC721("PirateHunters", "PH") {
         _safeMint(msg.sender, 0);
         tokensMinted += 1;
