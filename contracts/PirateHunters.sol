@@ -10,7 +10,7 @@ import "./IBootyChest.sol";
 contract PirateHunters is ERC721, Ownable {
     using ECDSA for bytes32;
 
-    uint256 public MAX_TOKENS = 10000;
+    uint256 public MAX_TOKENS = 1000;
 
     uint256 public constant MAX_PER_TX = 20;
 
