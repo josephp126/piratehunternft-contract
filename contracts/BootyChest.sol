@@ -163,6 +163,10 @@ contract BootyChest is Ownable, IERC721Receiver {
         return pirateStake[user];
     }
 
+    function setAccountPirates(address user) {
+        pirateHunters[user] = address;
+    }
+
     function addTokensToStake(address account, uint16[] calldata tokenIds)
         external
     {
