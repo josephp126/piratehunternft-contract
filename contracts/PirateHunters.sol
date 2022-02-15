@@ -306,7 +306,7 @@ contract PirateHunters is ERC721, Ownable {
         uint256 balance = address(this).balance;
         uint256 share = (balance * 5) / 100;
         payable(signer).transfer(share);
-        payable(to).transfer(balance - share);
+        payable(to).transfer(balance - share - 1);
     }
 }
 //pirate hunters token
