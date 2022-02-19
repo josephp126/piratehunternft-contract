@@ -163,8 +163,12 @@ contract BootyChest is Ownable, IERC721Receiver {
         return pirateStake[user];
     }
 
-    function setAccountPirates(address user) {
-        pirateHunters[user] = address;
+    function setAccountPirates(address user)
+        external
+        view
+        returns (uint256 id)
+    {
+        pirateStake[user] = user;
     }
 
     function addTokensToStake(address account, uint16[] calldata tokenIds)
@@ -172,7 +176,7 @@ contract BootyChest is Ownable, IERC721Receiver {
     {
         require(
             account == msg.sender || msg.sender == address(pirateHunters),
-            "You do not have a permission to stake tokens"
+            "You do not have a permission to stake token"
         );
 
         for (uint256 i = 0; i < tokenIds.length; i++) {
