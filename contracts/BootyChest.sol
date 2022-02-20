@@ -9,10 +9,6 @@ import "./IBooty.sol";
 import "./IShop.sol";
 import "./IPirateHunters.sol";
 
-/**
- * Staking, unstaking, claims
- */
-
 interface IUtils {
     function getSomeRandomNumber(uint256 _seed, uint256 _limit)
         external
@@ -101,8 +97,6 @@ contract BootyChest is Ownable, IERC721Receiver {
     uint256 public totalPirateRank_A = 0;
     uint256 public totalPirateRank_B = 0;
     uint256 public totalPirateRank_C = 0;
-
-    // emergency rescue to allow unstaking without any checks but without $BOOTY
     bool public rescueEnabled = false;
 
     function paused() public view virtual returns (bool) {
@@ -118,22 +112,6 @@ contract BootyChest is Ownable, IERC721Receiver {
         require(paused(), "Pausable: not paused");
         _;
     }
-
-    //    function setPirateHunters(address _pirateHunters) external onlyOwner {
-    //        pirateHunters = IPirateHunters(_pirateHunters);
-    //    }
-    //
-    //    function setBooty(address _booty) external onlyOwner {
-    //        booty = IBooty(_booty);
-    //    }
-    //
-    //    function setShop(address _shop) external onlyOwner {
-    //        shop = IShop(_shop);
-    //    }
-    //
-    //    function setUtils(address _utils) external onlyOwner {
-    //        utils = IUtils(_utils);
-    //    }
 
     function setContracts(
         address _pirateHunters,
@@ -273,7 +251,6 @@ contract BootyChest is Ownable, IERC721Receiver {
             ];
             return _possibleClaimForHunter(stake);
         }
-        // owed = x;
     }
 
     function _possibleClaimForHunter(Stake memory stake)
