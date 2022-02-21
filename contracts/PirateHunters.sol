@@ -18,7 +18,7 @@ contract PirateHunters is ERC721, Ownable {
 
     uint16 public pirateMinted = 0;
 
-    uint256 public price = 0.05 ether;
+    uint256 public price = 0.06 ether;
 
     bool private _paused = false;
 
@@ -241,6 +241,10 @@ contract PirateHunters is ERC721, Ownable {
 
     function setPirateId(uint16 id, bool special) external onlyOwner {
         _isPirate[id] = special;
+    }
+
+    function getPirateId(address _from) external returns (uint256 id) {
+        return id;
     }
 
     function setPirateIds(uint16[] calldata ids) external onlyOwner {
