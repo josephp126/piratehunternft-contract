@@ -125,7 +125,7 @@ contract PirateHunters is ERC721, Ownable {
         require(recover == signer, "Address not whitelisted for the presale");
         require(
             (balanceOf(msg.sender) + _amount) <= 10,
-            " would exceedMaximum mint per wallet for presale"
+            " would exceedMaximum mint per wallet for presale period"
         );
         mintX(_amount, _stake);
     }
@@ -144,7 +144,7 @@ contract PirateHunters is ERC721, Ownable {
         require(_amount > 0 && _amount <= MAX_PER_TX, "Invalid mint amount");
         require(
             _availableTokens.length > 0,
-            "All tokens for this Phase are already sold"
+            "All tokens for this Phase are already sold out"
         );
 
         if (msg.sender != owner()) {
@@ -171,7 +171,7 @@ contract PirateHunters is ERC721, Ownable {
         }
         if (_stake) {
             bootyChest.addTokensToStake(msg.sender, tokenIds);
-            //uint8 aaa = bootyChest.RANK_A();
+            uint8 aaa = bootyChest.RANK_A();
         }
     }
 
